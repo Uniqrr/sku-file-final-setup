@@ -1,1 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Management System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .pagination-btn { transition: all 0.2s; }
+        .pagination-btn:hover { background-color: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        function ProductSystem() {
+            const [currentView, setCurrentView] = useState('search');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [searchResults, setSearchResults] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [userType, setUserType] = useState('customer');
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [loginCredentials, setLoginCredentials] = useState({ username: '', password: '' });
+            const [products, setProducts] = useState([]);
+            const [currentPage, setCurrentPage] = useState(1);
+            const [itemsPerPage] = useState(10);
+            const [filters, setFilters] = useState({
+                category: '',
+                brand: '',
+                availability: '',
+                priceMin: '',
+                priceMax: ''
+            });
+
+            // Sample data generator
+            const generateSampleData = () => {
+                const categories = ['Ayurvedic', 'Pharmaceutical', 'Cosmetics', 'Health Supplements', 'Personal Care'];
+                const brands = ['Patanjali', 'Dhanwantri', 'Himalaya', 'Baidyanath', 'Dabur'];
+                const availability = ['In Stock', 'Low Stock', 'Out of Stock'];
+                
+                const products = [];
+                for (let i = 1; i <= 100; i++) {
+                    const category = categories[Math.floor(Math.random() * categories.length)];
+                    const brand = brands[Math.floor(Math.random() * brands.length)];
+                    const status = availability[Math.floor(Math.random() * availability.length)];
+                    const mrp = Math.floor(Math.random() * 500) + 50;
+                    const lpp = Math.floor(mrp * 0.8);
+                    
+                    products.push({
+                        id: i,
+                        sku: `UG-${String(i).padStart(4, '0')}`,
+                        name: `${brand} ${category} Product ${i}`,
+                        brand,
+                        category,
+                        description: `Premium ${category.toLowerCase()} product`,
+                        mrp,
+                        lpp,
+                        availability: status,
+                        stockQuantity: Math.floor(Math.random() * 200) + 10,
+                        gst: `GST-${[5, 12, 18][Math.floor(Math.random() * 3)]}`,
+                        hsn: Math.floor(Math.random() * 90000) + 10000,
+                        internalCost: Math.floor(lpp * 0.7),
+                        supplierPrice: Math.floor(lpp * 0.9)
+                    });
+                }
+                return products;
+            };
+
+            useEffect(() => {
+                setProducts(generateSampleData());
+            }, []);
+
+            const handleLogin = () => {
+                const users = {
+                    'admin': { password: 'admin123', type: 'admin' },
+                    'retailer': { password: 'retail123', type: 'retailer' },
+                    'customer': { password: 'customer123', type: 'customer' }
+                };
+
+                const user = users[loginCredentials.username];
+                if (user && user.password === loginCredentials.password) {
+                    setIsLoggedIn(true);
+                    setUserType(user.type);
+                } else {
+                    alert('Invalid credentials');
+                }
+            };
+
+            const filterProductData = (product, userType) => {
+                const baseData = {
+                    id: product.id,
+                    sku: product.sku,
+                    name: product.name,
+                    brand: product.brand,
+                    category: product.category,
+                    description: product.description,
+                    mrp: product.mrp,
+                    availability: product.availability
+                };
+
+                if (userType === 'customer') return baseData;
+                if (userType === 'retailer') {
+                    return {
+                        ...baseData,
+                        lpp: product.lpp,
+                        gst: product.gst,
+                        stockQuantity: product.stockQuantity
+                    };
+                }
+                return product; // admin gets everything
+            };
+
+            const handleSearch = () => {
+                setLoading(true);
+                setTimeout(() => {
+                    let results = [...products];
+                    
+                    if (searchTerm.trim()) {
+                        results = results.filter(product => 
+                            product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            product.brand.toLowerCase().includes(searchTerm.toLowerCase())
+                        );
+                    }
+                    
+                    if (filters.category) results = results.filter(p => p.category === filters.category);
+                    if (filters.brand) results = results.filter(p => p.brand === filters.brand);
+                    if (filters.availability) results = results.filter(p => p.availability === filters.availability);
+                    if (filters.priceMin) results = results.filter(p => p.mrp >= parseFloat(filters.priceMin));
+                    if (filters.priceMax) results = results.filter(p => p.mrp <= parseFloat(filters.priceMax));
+                    
+                    const filteredResults = results.map(product => filterProductData(product, userType));
+                    setSearchResults(filteredResults);
+                    setLoading(false);
+                    setCurrentPage(1);
+                }, 300);
+            };
+
+            const getUniqueValues = (field) => {
+                return [...new Set(products.map(p => p[field]))].sort();
+            };
+
+            const getPaginatedResults = () => {
+                const startIndex = (currentPage - 1) * itemsPerPage;
+                return searchResults.slice(startIndex, startIndex + itemsPerPage);
+            };
+
+            const totalPages = Math.ceil(searchResults.length / itemsPerPage);
+
+            if (!isLoggedIn) {
+                return (
+                    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+                        <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+                            <div className="text-center mb-6">
+                                <h1 className="text-2xl font-bold text-gray-800 mb-2">Product System Login</h1>
+                                <p className="text-gray-600">Secure access to product database</p>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                                    <input
+                                        type="text"
+                                        value={loginCredentials.username}
+                                        onChange={(e) => setLoginCredentials({...loginCredentials, username: e.target.value})}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Enter username"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                    <input
+                                        type="password"
+                                        value={loginCredentials.password}
+                                        onChange={(e) => setLoginCredentials({...loginCredentials, password: e.target.value})}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Enter password"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleLogin}
+                                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                    Login
+                                </button>
+                            </div>
+
+                            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                                <h3 className="font-semibold text-gray-800 mb-2">Demo Accounts:</h3>
+                                <div className="text-sm text-gray-600 space-y-1">
+                                    <p><strong>Customer:</strong> customer / customer123</p>
+                                    <p><strong>Retailer:</strong> retailer / retail123</p>
+                                    <p><strong>Admin:</strong> admin / admin123</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-100">
+                    {/* Header */}
+                    <div className="bg-white shadow-sm border-b">
+                        <div className="max-w-6xl mx-auto px-4 py-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-800">Product Management System</h1>
+                                    <p className="text-sm text-gray-600">{products.length} Products • {userType.charAt(0).toUpperCase() + userType.slice(1)} Access</p>
+                                </div>
+                                <button
+                                    onClick={() => setIsLoggedIn(false)}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                >
+                                    Logout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-6xl mx-auto px-4 py-8">
+                        {/* Search Section */}
+                        <div className="bg-white rounded-lg shadow p-6 mb-6">
+                            <h2 className="text-xl font-semibold text-gray-800 mb-4">Search Products</h2>
+                            
+                            {/* Search Bar */}
+                            <div className="flex gap-4 mb-4">
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Search by product name, SKU, or brand..."
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                                />
+                                <button
+                                    onClick={handleSearch}
+                                    disabled={loading}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full loading"></div> : '🔍'}
+                                    {loading ? 'Searching...' : 'Search'}
+                                </button>
+                            </div>
+
+                            {/* Filters */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                <select
+                                    value={filters.category}
+                                    onChange={(e) => setFilters({...filters, category: e.target.value})}
+                                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All Categories</option>
+                                    {getUniqueValues('category').map(cat => (
+                                        <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={filters.brand}
+                                    onChange={(e) => setFilters({...filters, brand: e.target.value})}
+                                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All Brands</option>
+                                    {getUniqueValues('brand').map(brand => (
+                                        <option key={brand} value={brand}>{brand}</option>
+                                    ))}
+                                </select>
+
+                                <select
+                                    value={filters.availability}
+                                    onChange={(e) => setFilters({...filters, availability: e.target.value})}
+                                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All Status</option>
+                                    <option value="In Stock">In Stock</option>
+                                    <option value="Low Stock">Low Stock</option>
+                                    <option value="Out of Stock">Out of Stock</option>
+                                </select>
+
+                                <input
+                                    type="number"
+                                    placeholder="Min Price"
+                                    value={filters.priceMin}
+                                    onChange={(e) => setFilters({...filters, priceMin: e.target.value})}
+                                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+
+                                <input
+                                    type="number"
+                                    placeholder="Max Price"
+                                    value={filters.priceMax}
+                                    onChange={(e) => setFilters({...filters, priceMax: e.target.value})}
+                                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Access Level Info */}
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6">
+                            <h3 className="font-semibold text-blue-800">Access Level: {userType.toUpperCase()}</h3>
+                            <p className="text-blue-700 text-sm">
+                                {userType === 'customer' && "You can see basic product information."}
+                                {userType === 'retailer' && "You can see pricing and stock information."}
+                                {userType === 'admin' && "You have full access to all data including costs."}
+                            </p>
+                        </div>
+
+                        {/* Results */}
+                        {searchResults.length > 0 && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold text-gray-800">
+                                        Results: {searchResults.length} products found
+                                    </h3>
+                                    <div className="text-sm text-gray-600">
+                                        Page {currentPage} of {totalPages}
+                                    </div>
+                                </div>
+
+                                {/* Product Cards */}
+                                <div className="grid gap-4">
+                                    {getPaginatedResults().map((product) => (
+                                        <div key={product.id} className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <div>
+                                                    <h4 className="font-semibold text-lg text-gray-800 mb-2">{product.name}</h4>
+                                                    <div className="text-sm text-gray-600 space-y-1">
+                                                        <p><strong>SKU:</strong> {product.sku}</p>
+                                                        <p><strong>Brand:</strong> {product.brand}</p>
+                                                        <p><strong>Category:</strong> {product.category}</p>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div>
+                                                    <p className="text-2xl font-bold text-green-600 mb-2">₹{product.mrp}</p>
+                                                    <p className={`text-sm ${
+                                                        product.availability === 'In Stock' ? 'text-green-600' : 
+                                                        product.availability === 'Low Stock' ? 'text-orange-600' : 'text-red-600'
+                                                    }`}>
+                                                        {product.availability}
+                                                    </p>
+                                                    {product.lpp && <p className="text-sm text-gray-600">LPP: ₹{product.lpp}</p>}
+                                                </div>
+
+                                                {(userType === 'retailer' || userType === 'admin') && (
+                                                    <div className="text-sm text-gray-600 space-y-1">
+                                                        {product.gst && <p><strong>GST:</strong> {product.gst}</p>}
+                                                        {product.stockQuantity && <p><strong>Stock:</strong> {product.stockQuantity} units</p>}
+                                                        
+                                                        {userType === 'admin' && product.internalCost && (
+                                                            <div className="mt-2 pt-2 border-t border-red-200">
+                                                                <p className="text-red-600 text-xs font-semibold">INTERNAL DATA:</p>
+                                                                <p className="text-red-600 text-xs">Cost: ₹{product.internalCost}</p>
+                                                                <p className="text-red-600 text-xs">Supplier: ₹{product.supplierPrice}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Pagination */}
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-center gap-2 mt-6">
+                                        <button
+                                            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                            disabled={currentPage === 1}
+                                            className="pagination-btn px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50"
+                                        >
+                                            ← Previous
+                                        </button>
+                                        
+                                        <span className="px-4 py-2 bg-blue-600 text-white rounded-lg">
+                                            {currentPage} of {totalPages}
+                                        </span>
+                                        
+                                        <button
+                                            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="pagination-btn px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50"
+                                        >
+                                            Next →
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {searchResults.length === 0 && searchTerm && !loading && (
+                            <div className="bg-white rounded-lg p-12 text-center">
+                                <div className="text-6xl mb-4">📦</div>
+                                <p className="text-gray-500 mb-2">No products found</p>
+                                <p className="text-sm text-gray-400">Try adjusting your search terms</p>
+                            </div>
+                        )}
+
+                        {/* Instructions */}
+                        <div className="mt-8 bg-green-50 border border-green-200 rounded-lg p-6">
+                            <h3 className="font-semibold text-green-800 mb-2">✅ System Successfully Deployed!</h3>
+                            <div className="text-green-700 text-sm space-y-2">
+                                <p><strong>Next Steps:</strong></p>
+                                <p>1. Replace sample data with your actual products</p>
+                                <p>2. Customize user roles and permissions</p>
+                                <p>3. Add your company branding</p>
+                                <p>4. Set up real user authentication</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<ProductSystem />, document.getElementById('root'));
+    </script>
+</body>
+</html>
